@@ -1,0 +1,17 @@
+# Web Scraping
+selenium
+webdriver-manager
+beautifulsoup4
+requests
+
+# Data Processing
+pandas
+numpy
+
+# Database
+psycopg2-binary
+sqlalchemy
+
+# Utilities
+python-dotenv
+tqdm

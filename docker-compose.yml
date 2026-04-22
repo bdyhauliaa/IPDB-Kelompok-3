@@ -1,0 +1,72 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: ipbd_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./metadata/init:/docker-entrypoint-initdb.d
+
+  airflow-webserver:
+    image: apache/airflow:2.9.2
+    container_name: ipbd_airflow_webserver
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./data:/opt/airflow/data
+    command: bash -c "airflow db init && airflow users create --username ${AIRFLOW_USERNAME} --firstname Admin --lastname User --role Admin --email ${AIRFLOW_EMAIL} --password ${AIRFLOW_PASSWORD} || true && airflow webserver"
+
+  airflow-scheduler:
+    image: apache/airflow:2.9.2
+    container_name: ipbd_airflow_scheduler
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./data:/opt/airflow/data
+    command: bash -c "airflow scheduler"
+
+  streamlit:
+    image: python:3.11-slim
+    container_name: ipbd_streamlit
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    working_dir: /app
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+    ports:
+      - "8501:8501"
+    command: bash -c "pip install --no-cache-dir -r requirements.txt && streamlit run dashboard/app.py --server.address 0.0.0.0 --server.port 8501"
+
+volumes:
+  postgres_data:
