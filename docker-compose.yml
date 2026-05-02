@@ -28,7 +28,7 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     ports:
-      - "8080:8080"
+      - "8087:8080"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
