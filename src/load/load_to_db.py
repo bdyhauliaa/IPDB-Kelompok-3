@@ -6,11 +6,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DB_CONFIG = {
-    "host": "postgres",
-    "port": "5432",
-    "dbname": "ekonomi_db",
-    "user": "postgres",
-    "password": "031205",
+    "host": os.getenv("POSTGRES_HOST", "host.docker.internal"),
+    "port": os.getenv("POSTGRES_PORT", "5432"),
+    "dbname": os.getenv("POSTGRES_DB", "ekonomi_db"),
+    "user": os.getenv("POSTGRES_USER", "postgres"),
+    "password": os.getenv("POSTGRES_PASSWORD", "123456"),
 }
 
 DATA_FOLDER = "/opt/airflow/data/processed"
@@ -31,6 +31,24 @@ def insert_dim_provinsi(cur, nama):
         SELECT id_provinsi FROM dim_provinsi
         WHERE nama_provinsi = %s;
     """, (nama,))
+def insert_dim_provinsi(cur, nama_provinsi):
+    cur.execute(
+        """
+        INSERT INTO dim_provinsi (nama_provinsi)
+        VALUES (%s)
+        ON CONFLICT (nama_provinsi) DO NOTHING;
+        """,
+        (nama_provinsi,)
+    )
+
+    cur.execute(
+        """
+        SELECT id_provinsi
+        FROM dim_provinsi
+        WHERE nama_provinsi = %s;
+        """,
+        (nama_provinsi,)
+    )
 
     return cur.fetchone()[0]
 
@@ -46,6 +64,24 @@ def insert_dim_komoditas(cur, nama):
         SELECT id_komoditas FROM dim_komoditas
         WHERE nama_komoditas = %s;
     """, (nama,))
+def insert_dim_komoditas(cur, nama_komoditas):
+    cur.execute(
+        """
+        INSERT INTO dim_komoditas (nama_komoditas)
+        VALUES (%s)
+        ON CONFLICT (nama_komoditas) DO NOTHING;
+        """,
+        (nama_komoditas,)
+    )
+
+    cur.execute(
+        """
+        SELECT id_komoditas
+        FROM dim_komoditas
+        WHERE nama_komoditas = %s;
+        """,
+        (nama_komoditas,)
+    )
 
     return cur.fetchone()[0]
 
@@ -131,10 +167,9 @@ def load_csv(path):
 
 
 if __name__ == "__main__":
-    print("=== LOAD START ===")
+    if not os.path.exists(DATA_FOLDER):
+        raise FileNotFoundError(f"Folder tidak ditemukan: {DATA_FOLDER}")
 
     for file in os.listdir(DATA_FOLDER):
         if file.endswith(".csv"):
             load_csv(os.path.join(DATA_FOLDER, file))
-
-    print("=== LOAD DONE ===")
