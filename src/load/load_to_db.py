@@ -20,6 +20,17 @@ def get_connection():
     return psycopg2.connect(**DB_CONFIG)
 
 
+def insert_dim_provinsi(cur, nama):
+    cur.execute("""
+        INSERT INTO dim_provinsi (nama_provinsi)
+        VALUES (%s)
+        ON CONFLICT (nama_provinsi) DO NOTHING;
+    """, (nama,))
+
+    cur.execute("""
+        SELECT id_provinsi FROM dim_provinsi
+        WHERE nama_provinsi = %s;
+    """, (nama,))
 def insert_dim_provinsi(cur, nama_provinsi):
     cur.execute(
         """
@@ -42,6 +53,17 @@ def insert_dim_provinsi(cur, nama_provinsi):
     return cur.fetchone()[0]
 
 
+def insert_dim_komoditas(cur, nama):
+    cur.execute("""
+        INSERT INTO dim_komoditas (nama_komoditas)
+        VALUES (%s)
+        ON CONFLICT (nama_komoditas) DO NOTHING;
+    """, (nama,))
+
+    cur.execute("""
+        SELECT id_komoditas FROM dim_komoditas
+        WHERE nama_komoditas = %s;
+    """, (nama,))
 def insert_dim_komoditas(cur, nama_komoditas):
     cur.execute(
         """
@@ -65,63 +87,78 @@ def insert_dim_komoditas(cur, nama_komoditas):
 
 
 def insert_dim_waktu(cur, tahun, bulan):
-    cur.execute(
-        """
+    cur.execute("""
         INSERT INTO dim_waktu (tahun, bulan)
         VALUES (%s, %s)
         ON CONFLICT (tahun, bulan) DO NOTHING;
-        """,
-        (tahun, bulan)
-    )
+    """, (tahun, bulan))
 
 
-def insert_fact_harga(cur, id_provinsi, id_komoditas, tahun, bulan, harga):
-    cur.execute(
-        """
-        INSERT INTO fact_harga 
-        (id_provinsi, id_komoditas, tahun, bulan, harga)
-        VALUES (%s, %s, %s, %s, %s);
-        """,
-        (id_provinsi, id_komoditas, tahun, bulan, harga)
-    )
+# =========================
+# LOAD HARGA
+# =========================
+def load_harga(cur, df):
+    for _, row in df.iterrows():
+        prov = insert_dim_provinsi(cur, row["provinsi"])
+        komod = insert_dim_komoditas(cur, row["komoditas"])
+
+        tahun = int(row["tahun"])
+        bulan = str(row["bulan"])
+        harga = float(row["harga"])
+
+        insert_dim_waktu(cur, tahun, bulan)
+
+        cur.execute("""
+            INSERT INTO fact_harga
+            (id_provinsi, id_komoditas, tahun, bulan, harga)
+            VALUES (%s, %s, %s, %s, %s);
+        """, (prov, komod, tahun, bulan, harga))
 
 
-def load_csv(file_path):
-    print(f"Loading file: {file_path}")
+# =========================
+# LOAD INFLASI
+# =========================
+def load_inflasi(cur, df):
+    for _, row in df.iterrows():
+        prov = insert_dim_provinsi(cur, row["provinsi"])
 
-    df = pd.read_csv(file_path)
+        tahun = int(row["tahun"])
+        bulan = str(row["bulan"])
+        nilai = float(row["nilai_inflasi"])
 
-    # rapikan nama kolom
-    df.columns = [col.lower().strip() for col in df.columns]
+        insert_dim_waktu(cur, tahun, bulan)
 
-    required_columns = ["provinsi", "komoditas", "tahun", "bulan", "harga"]
+        cur.execute("""
+            INSERT INTO fact_inflasi
+            (id_provinsi, tahun, bulan, nilai_inflasi)
+            VALUES (%s, %s, %s, %s);
+        """, (prov, tahun, bulan, nilai))
 
-    for col in required_columns:
-        if col not in df.columns:
-            raise ValueError(f"Kolom '{col}' tidak ditemukan di {file_path}. Kolom tersedia: {list(df.columns)}")
+
+def load_csv(path):
+    print(f"Loading: {path}")
+
+    df = pd.read_csv(path)
+    df.columns = [c.lower() for c in df.columns]
 
     conn = get_connection()
     cur = conn.cursor()
 
     try:
-        for _, row in df.iterrows():
-            nama_provinsi = str(row["provinsi"]).strip()
-            nama_komoditas = str(row["komoditas"]).strip()
-            tahun = int(row["tahun"])
-            bulan = str(row["bulan"]).strip()
-            harga = float(row["harga"])
+        if "komoditas" in df.columns:
+            print("→ DETECTED HARGA")
+            load_harga(cur, df)
 
-            id_provinsi = insert_dim_provinsi(cur, nama_provinsi)
-            id_komoditas = insert_dim_komoditas(cur, nama_komoditas)
-            insert_dim_waktu(cur, tahun, bulan)
-            insert_fact_harga(cur, id_provinsi, id_komoditas, tahun, bulan, harga)
+        elif "nilai_inflasi" in df.columns:
+            print("→ DETECTED INFLASI")
+            load_inflasi(cur, df)
 
         conn.commit()
-        print(f"SUCCESS loaded: {file_path}")
+        print("SUCCESS")
 
     except Exception as e:
         conn.rollback()
-        print(f"FAILED load {file_path}: {e}")
+        print("ERROR:", e)
         raise e
 
     finally:
